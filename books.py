@@ -2,6 +2,7 @@ import configparser
 import mongoengine
 import json
 import datetime
+import redis
 
 SRC = {
     'authors': 'authors.json',
@@ -11,12 +12,19 @@ SRC = {
 config = configparser.ConfigParser()
 config.read('config.ini')
 
-user = config.get('DB', 'USER')
-pwd = config.get('DB', 'PASS')
-db_name = config.get('DB', 'DB_NAME')
-domain = config.get('DB', 'DOMAIN')
+mongo = {
+    'user': config.get('CLUSTER', 'USER'),
+    'pwd': config.get('CLUSTER', 'PWD'),
+    'domain': config.get('CLUSTER', 'DOMAIN'),
+    'db_name': config.get('BOOKS', 'DB_NAME')
+}
 
-uri = f"mongodb+srv://{user}:{pwd}@{domain}/{db_name}?retryWrites=true&w=majority"
+rds = {
+    'host': config.get('REDIS', 'HOST'),
+    'port': config.get('REDIS', 'PORT')
+}
+
+uri = f"mongodb+srv://{mongo['user']}:{mongo['pwd']}@{mongo['domain']}/{mongo['db_name']}?retryWrites=true&w=majority"
 mongoengine.connect(host=uri, ssl=True)
 
 class Author(mongoengine.fields.Document):
@@ -66,36 +74,71 @@ def fill_db():
         quote = qt['quote']
         Quote(tags=tags, author=author, quote=quote).save()
 
-def find_name(name):
+cache_db = redis.Redis(host=rds['host'], port=rds['port'], password=None)
+
+def cache(func):
+    def wrapper (pattern):
+        key = hash(pattern)
+        result = cache_db.get(key)
+
+        if result is None:
+            result = func(pattern)
+            cache_db.set(key, json.dumps(result))
+        else:
+            print('cache call')
+            result = json.loads(result)
+
+        return result
+    return wrapper
+
+@cache
+def find_name(name) -> list:
+    print('find_name function call')
+    resp = []
     responce = Author.objects(fullname=name[0])
 
     if not responce:
         responce = Author.objects(fullname__iregex=f'{name[0]}')
         if not responce:
-            print(f'nothing was fond by name: {name[0]}')
-            return
+            resp.append({'Error': f'nothing was fond by name: {name[0]}'})
+            # print(f'nothing was fond by name: {name[0]}')
+            # return
 
     auth = {item.id: item.fullname for item in responce}
 
     for auth_id, auth_name in auth.items():
         quotes = Quote.objects(author=auth_id)
         for item in quotes:
-            print(f'{auth_name}: {item.quote}')
+            # print(f'{auth_name}: {item.quote}')
+            resp.append({auth_name: item.quote})
+    return resp
 
-def find_tag(tag):
+@cache
+def find_tag(tag) -> list:
+    print('find_tag function call')
+    resp = []
     responce = Quote.objects(tags__tag=tag[0])
+    
     if not responce:
         responce = Quote.objects(tags__tag__iregex=f'{tag[0]}')
         if not responce:
-            print(f'nothing was fond by tag: {tag[0]}')
-            return
+            resp.append({'Error': f'nothing was fond by tag: {tag[0]}'})
+            # print(f'nothing was fond by tag: {tag[0]}')
+            # return
     for item in responce:
-        print(f'{item.author.fullname}: {item.quote}')
+        # print(f'{item.author.fullname}: {item.quote}')
+        resp.append({item.author.fullname: item.quote})
+    return resp
 
-def find_tags(tags):
+@cache
+def find_tags(tags) -> list:
+    print('find_tags function call')
+    resp = []
     responce = Quote.objects(tags__tag__in=tags)
     for item in responce:
-        print(f'{item.author.fullname}: {item.quote}')
+        resp.append({item.author.fullname: item.quote})
+        # print(f'{item.author.fullname}: {item.quote}')
+    return resp
 
 CMD = {
     'name': find_name,
@@ -104,6 +147,24 @@ CMD = {
 }
 
 test_input = [
+    'name: Albert Einstein',
+    'name:Albert Einstein',
+    'name: Albert Einstein ',
+    'name: Steve Martin',
+    'name: st',
+    'name: --',
+    'tag: change',
+    'tag:change',
+    'tag: change ',
+    'tag: humor',
+    'tag: hum',
+    'tag: or',
+    'tag: ---',
+    'tags:life,live',
+    'tags: life,live',
+    'tags: life, live',
+    'tags: life ,live',
+
     'name: Albert Einstein',
     'name:Albert Einstein',
     'name: Albert Einstein ',
@@ -130,9 +191,9 @@ if __name__ == '__main__':
     counter = 0
 
     while True:
-        ui = input('Введить команду у форматі <команда>: <значення>: ')
-        # ui = test_input[counter]
-        # counter += 1
+        # ui = input('Введить команду у форматі <команда>: <значення>: ')
+        ui = test_input[counter]
+        counter += 1
 
         if ui.strip().lower() == 'exit':
             break
@@ -141,9 +202,13 @@ if __name__ == '__main__':
             com, params = ui.split(':')
             com = com.strip()
             params = params.split(',')
-            params = [i.strip() for i in params]
+            params = tuple([i.strip() for i in params])
         except Exception as err:
             print(err)
 
         func = CMD[com]
-        func(params)
+        resp = func(params)
+
+        for item in resp:
+            for key, value in item.items():
+                print(f'{key}: {value}')
