@@ -191,9 +191,9 @@ if __name__ == '__main__':
     counter = 0
 
     while True:
-        # ui = input('Введить команду у форматі <команда>: <значення>: ')
-        ui = test_input[counter]
-        counter += 1
+        ui = input('Введить команду у форматі <команда>: <значення>: ')
+        # ui = test_input[counter]
+        # counter += 1
 
         if ui.strip().lower() == 'exit':
             break
