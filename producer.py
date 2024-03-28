@@ -1,12 +1,13 @@
 import configparser
 import mongoengine
 import pika
+import pathlib
 from mailer_db import Users, generate_fake_data, fill_db
 
 
 def mongo_connect(config: configparser.ConfigParser) -> None:
     user = config.get('CLUSTER', 'USER')
-    pwd = config.get('CLUSTER', 'PASS')
+    pwd = config.get('CLUSTER', 'PWD')
     domain = config.get('CLUSTER', 'DOMAIN')
     db_name = config.get('MAILER', 'DB_NAME')
 
@@ -40,7 +41,10 @@ def rabbit_connect(config: configparser.ConfigParser) -> None:
 
 if __name__ == "__main__":
     config = configparser.ConfigParser()
-    config.read('config.ini')
+    if pathlib.Path('config_dev.ini').exists():
+        config.read('config_dev.ini')
+    else:
+        config.read('config.ini')
 
     mongo_connect(config)
     users = generate_fake_data(5)

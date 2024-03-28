@@ -3,29 +3,12 @@ import mongoengine
 import json
 import datetime
 import redis
+import pathlib
 
 SRC = {
     'authors': 'authors.json',
     'quotes': 'quotes.json'
 }
-
-config = configparser.ConfigParser()
-config.read('config.ini')
-
-mongo = {
-    'user': config.get('CLUSTER', 'USER'),
-    'pwd': config.get('CLUSTER', 'PWD'),
-    'domain': config.get('CLUSTER', 'DOMAIN'),
-    'db_name': config.get('BOOKS', 'DB_NAME')
-}
-
-rds = {
-    'host': config.get('REDIS', 'HOST'),
-    'port': config.get('REDIS', 'PORT')
-}
-
-uri = f"mongodb+srv://{mongo['user']}:{mongo['pwd']}@{mongo['domain']}/{mongo['db_name']}?retryWrites=true&w=majority"
-mongoengine.connect(host=uri, ssl=True)
 
 class Author(mongoengine.fields.Document):
     born_date = mongoengine.fields.DateField()
@@ -73,8 +56,6 @@ def fill_db():
 
         quote = qt['quote']
         Quote(tags=tags, author=author, quote=quote).save()
-
-cache_db = redis.Redis(host=rds['host'], port=rds['port'], password=None)
 
 def cache(func):
     def wrapper (pattern):
@@ -186,6 +167,29 @@ test_input = [
 ]
 
 if __name__ == '__main__':
+    config = configparser.ConfigParser()
+    if pathlib.Path('config_dev.ini').exists():
+        config.read('config_dev.ini')
+    else:
+        config.read('config.ini')
+
+    mongo = {
+    'user': config.get('CLUSTER', 'USER'),
+    'pwd': config.get('CLUSTER', 'PWD'),
+    'domain': config.get('CLUSTER', 'DOMAIN'),
+    'db_name': config.get('BOOKS', 'DB_NAME')
+}
+
+    rds = {
+        'host': config.get('REDIS', 'HOST'),
+        'port': config.get('REDIS', 'PORT')
+    }
+
+    uri = f"mongodb+srv://{mongo['user']}:{mongo['pwd']}@{mongo['domain']}/{mongo['db_name']}?retryWrites=true&w=majority"
+    mongoengine.connect(host=uri, ssl=True)
+
+    cache_db = redis.Redis(host=rds['host'], port=rds['port'], password=None)
+
     # fill_db()
 
     counter = 0

@@ -4,9 +4,13 @@ import configparser
 import time
 import mongoengine
 from mailer_db import Users
+import pathlib
 
 config = configparser.ConfigParser()
-config.read('config.ini')
+if pathlib.Path('config_dev.ini').exists():
+    config.read('config_dev.ini')
+else:
+    config.read('config.ini')
 
 params = {
     'user': config.get('RABBIT', 'USER'),
@@ -19,7 +23,7 @@ params = {
 
 def mongo_connect(config: configparser.ConfigParser) -> None:
     user = config.get('CLUSTER', 'USER')
-    pwd = config.get('CLUSTER', 'PASS')
+    pwd = config.get('CLUSTER', 'PWD')
     domain = config.get('CLUSTER', 'DOMAIN')
     db_name = config.get('MAILER', 'DB_NAME')
 
